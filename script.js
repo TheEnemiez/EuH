@@ -253,14 +253,11 @@ function checkIfSolved() {
     if (solved) {
         console.log("Puzzle solved!");
         const overlay = document.getElementById('gradient-overlay');
-        const overlayVideo = document.getElementById('overlay-video');
 
         overlay.style.background = `linear-gradient(to bottom right, ${correctGrid[0][0]}, ${correctGrid[0][gridWidth - 1]}, ${correctGrid[gridHeight - 1][0]}, ${correctGrid[gridHeight - 1][gridWidth - 1]})`;
         overlay.style.opacity = 1;
-        overlayVideo.style.opacity = 1;
         setTimeout(() => {
             overlay.style.opacity = 0;
-            overlayVideo.style.opacity = 0;
         }, 1000);
         setTimeout(showLevelPopup, 1500);
     } else {
