@@ -325,7 +325,7 @@ function handleTouchStart(event) {
         draggedCell.style.backgroundColor = 'transparent';
         cloneElement.style.left = `${touch.clientX - touchOffsetX}px`;
         cloneElement.style.top = `${touch.clientY - touchOffsetY}px`;
-    }, 500);
+    }, 250);
 }
 
 function handleTouchMove(event) {
