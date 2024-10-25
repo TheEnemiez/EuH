@@ -1,6 +1,10 @@
 let selectedCell = null;
-let correctGrid = []
-
+let correctGrid = [];
+let currentGrid = [];
+let draggedCell = null;
+let draggedColor = null;
+let longPressTimeout = null;
+let cloneElement = null;
 function hexToRgb(hex) {
     const bigint = parseInt(hex.slice(1), 16);
     const r = (bigint >> 16) & 255;
@@ -32,6 +36,12 @@ function interpolateColors(startRGB, endRGB, steps) {
     return colorArray;
 }
 
+function getRandomGridDimensions() {
+    const width = Math.floor(Math.random() * 9) + 4;
+    const height = Math.floor(Math.random() * 9) + 4;
+    console.log(`width: ${width}, height: ${height}`)
+    return { width, height };
+}
 function generateRandomColor() {
     const letters = '0123456789ABCDEF';
     let color = '#';
@@ -50,42 +60,41 @@ function generateCornerColors() {
 }
 
 function setColors() {
+    const { width, height } = getRandomGridDimensions();
+    gridWidth = width;
+    gridHeight = height;
+
     const [topLeft, topRight, bottomLeft, bottomRight] = generateCornerColors();
-
     const grid = [];
-
-    const leftColumn = interpolateColors(hexToRgb(topLeft), hexToRgb(bottomLeft), 4);
-    const rightColumn = interpolateColors(hexToRgb(topRight), hexToRgb(bottomRight), 4);
-
-    for (let i = 0; i < 6; i++) {
+    const leftColumn = interpolateColors(hexToRgb(topLeft), hexToRgb(bottomLeft), height - 2);
+    const rightColumn = interpolateColors(hexToRgb(topRight), hexToRgb(bottomRight), height - 2);
+    for (let i = 0; i < height; i++) {
         if (i === 0) {
-            grid.push([topLeft, ...interpolateColors(hexToRgb(topLeft), hexToRgb(topRight), 4), topRight]);
-        } else if (i === 5) {
-            grid.push([bottomLeft, ...interpolateColors(hexToRgb(bottomLeft), hexToRgb(bottomRight), 4), bottomRight]);
+            grid.push([topLeft, ...interpolateColors(hexToRgb(topLeft), hexToRgb(topRight), width - 2), topRight]);
+        } else if (i === height - 1) {
+            grid.push([bottomLeft, ...interpolateColors(hexToRgb(bottomLeft), hexToRgb(bottomRight), width - 2), bottomRight]);
         } else {
-            const row = interpolateColors(hexToRgb(leftColumn[i - 1]), hexToRgb(rightColumn[i - 1]), 4);
+            const row = interpolateColors(hexToRgb(leftColumn[i - 1]), hexToRgb(rightColumn[i - 1]), width - 2);
             grid.push([leftColumn[i - 1], ...row, rightColumn[i - 1]]);
         }
     }
 
-    correctGrid = JSON.parse(JSON.stringify(grid))
-
+    correctGrid = JSON.parse(JSON.stringify(grid));
     const movableSquares = [];
-    for (let row = 1; row < 5; row++) {
-        for (let col = 1; col < 5; col++) {
+    for (let row = 0; row < height; row++) {
+        for (let col = 1; col < width - 1; col++) {
             movableSquares.push(grid[row][col]);
         }
     }
-
     const shuffledMovable = shuffleArray([...movableSquares]);
-
     let shuffleIndex = 0;
-    for (let row = 1; row < 5; row++) {
-        for (let col = 1; col < 5; col++) {
+    for (let row = 0; row < height; row++) {
+        for (let col = 1; col < width - 1; col++) {
             grid[row][col] = shuffledMovable[shuffleIndex++];
         }
     }
 
+    currentGrid = grid;
     return grid;
 }
 
@@ -97,103 +106,238 @@ function shuffleArray(array) {
     return array;
 }
 
-function renderGrid(grid) {
+function renderGrid() {
     const container = document.getElementById('grid-container');
-
     if (!container) {
         console.error('Grid container not found');
         return;
     }
+    container.innerHTML = '';
+    container.style.gridTemplateColumns = `repeat(${gridWidth}, auto)`;
+    container.style.gridTemplateRows = `repeat(${gridHeight}, auto)`;
 
-    container.innerHTML = ''
-
-    for (let row = 0; row < 6; row++) {
-        for (let col = 0; col < 6; col++) {
+    currentGrid.forEach((rowArray, row) => {
+        rowArray.forEach((color, col) => {
             const cell = document.createElement('div');
             cell.className = 'cell';
-            cell.style.backgroundColor = grid[row][col];
+            cell.style.backgroundColor = color;
             cell.dataset.row = row;
             cell.dataset.col = col;
-
-            if (row > 0 && row < 5 && col > 0 && col < 5) {
+            if (col !== 0 && col !== gridWidth - 1) {
                 cell.classList.add('movable');
                 cell.addEventListener('click', handleCellClick);
-                cell.addEventListener('touchend', handleCellClick)
+                cell.addEventListener('touchstart', handleTouchStart);
+                cell.addEventListener('touchend', handleTouchEnd);
+                cell.addEventListener('touchmove', handleTouchMove);
             }
 
             container.appendChild(cell);
-        }
-    }
+        });
+    });
 }
 
-let draggedColor = null;
+let isAnimating = false;
 
 function handleCellClick(event) {
+    console.log("handleCellClick triggered");
+    if (isAnimating) {
+        console.log("Animation in progress, click ignored.");
+        return;
+    }
+
     const cell = event.target;
+    const row = parseInt(cell.dataset.row);
+    const col = parseInt(cell.dataset.col);
+    console.log(`Clicked cell at row: ${row}, col: ${col}`);
 
-    if (selectedCell === cell) {
-        cell.classList.remove('selected');
+    document.querySelectorAll('.selected').forEach(selected => selected.classList.remove('selected'));
+
+    if (selectedCell) {
+        console.log("A cell is already selected. Starting swap process.");
+        isAnimating = true;
+
+        const selectedRow = selectedCell.row;
+        const selectedCol = selectedCell.col;
+        const targetCell = document.querySelector(`[data-row="${selectedRow}"][data-col="${selectedCol}"]`);
+        console.log(`Swapping selected cell at row: ${selectedRow}, col: ${selectedCol} with clicked cell at row: ${row}, col: ${col}`);
+        const cellRect = cell.getBoundingClientRect();
+        const targetRect = targetCell.getBoundingClientRect();
+        const offsetX = targetRect.left - cellRect.left;
+        const offsetY = targetRect.top - cellRect.top;
+        console.log(`Animation offsets - X: ${offsetX}, Y: ${offsetY}`);
+        Promise.all([
+            animateSwap(cell, offsetX, offsetY),
+            animateSwap(targetCell, -offsetX, -offsetY)
+        ]).then(() => {
+            console.log("Animation complete. Swapping colors in currentGrid.");
+            const tempColor = currentGrid[selectedRow][selectedCol];
+            currentGrid[selectedRow][selectedCol] = currentGrid[row][col];
+            currentGrid[row][col] = tempColor;
+            console.log("Swapped colors in currentGrid:");
+            console.table(currentGrid);
+            renderGrid();
+            console.log("Resetting transform styles.");
+            cell.style.transform = '';
+            targetCell.style.transform = '';
+            cell.classList.remove('selected');
+            targetCell.classList.remove('selected');
+            isAnimating = false;
+
+            console.log("Checking if puzzle is solved.");
+
+            checkIfSolved();
+        }).catch(error => console.error("Animation promise error:", error));
+
         selectedCell = null;
-    }
-    else if (selectedCell === null) {
+        console.log("Reset selectedCell.");
+    } else {
+        selectedCell = { row, col };
         cell.classList.add('selected');
-        selectedCell = cell;
-    }
-    else {
-        const tempColor = selectedCell.style.backgroundColor;
-        selectedCell.style.backgroundColor = cell.style.backgroundColor;
-        cell.style.backgroundColor = tempColor;
-        selectedCell.classList.remove('selected');
-        selectedCell = null;
-        checkIfSolved()
+        console.log(`Selected cell at row: ${row}, col: ${col}`);
     }
 }
 
-function checkIfSolved() {
-    const grid = document.querySelectorAll('.movable');
+function animateSwap(element, offsetX, offsetY) {
+    console.log(`Animating swap for element at offsetX: ${offsetX}, offsetY: ${offsetY}`);
+    return new Promise(resolve => {
 
-    let solved = true;
-    grid.forEach(cell => {
-        const row = parseInt(cell.dataset.row);
-        const col = parseInt(cell.dataset.col);
-        const correctColor = correctGrid[row][col];
-        const currentColor = rgbToHexColor(cell.style.backgroundColor);
-
-        if (currentColor !== correctColor) {
-            solved = false;
-        }
+        element.style.zIndex = '20';
+        element.style.transition = 'transform 0.3s ease';
+        element.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+        element.addEventListener('transitionend', () => {
+            console.log("Transition ended for element.");
+            element.style.transition = '';
+            element.style.zIndex = '';
+            resolve();
+        }, { once: true });
     });
-
+}
+function checkIfSolved() {
+    console.log("Checking if puzzle is solved.");
+    let solved = true;
+    for (let row = 0; row < gridHeight; row++) {
+        for (let col = 0; col < gridWidth; col++) {
+            const currentColor = currentGrid[row][col];
+            const correctColor = correctGrid[row][col];
+            if (col !== 0 && col !== gridWidth - 1 && currentColor !== correctColor) {
+                console.log(`Mismatch found at row: ${row}, col: ${col}. Current: ${currentColor}, Correct: ${correctColor}`);
+                solved = false;
+                break;
+            }
+        }
+        if (!solved) break;
+    }
     if (solved) {
-        alert('Good job!')
-        setTimeout(startNewBatch, 1000)
+        console.log("Puzzle solved!");
+        alert('Good job!');
+        setTimeout(startNewBatch, 1000);
+    } else {
+        console.log("Puzzle not yet solved.");
     }
 }
+let hintTimeout;
 
 function showHint() {
-    const grid = document.querySelectorAll('.movable');
-
-    grid.forEach(cell => {
+    const cells = document.querySelectorAll('.movable');
+    if (hintTimeout) {
+        clearTimeout(hintTimeout);
+    }
+    cells.forEach(cell => cell.classList.remove('wrong'));
+    void document.body.offsetWidth;
+    cells.forEach(cell => {
         const row = parseInt(cell.dataset.row);
         const col = parseInt(cell.dataset.col);
         const correctColor = correctGrid[row][col];
-        const currentColor = rgbToHexColor(cell.style.backgroundColor);
+        const currentColor = currentGrid[row][col];
 
         if (currentColor !== correctColor) {
-            cell.classList.add('wrong')
+            cell.classList.add('wrong');
         }
     });
-
-    setTimeout(() => {
-        grid.forEach(cell => {
-            cell.classList.remove('wrong')
-        });
+    hintTimeout = setTimeout(() => {
+        cells.forEach(cell => cell.classList.remove('wrong'));
     }, 1000);
 }
+function handleDragStart(event) {
+    draggedCell = event.target;
+    draggedColor = event.target.style.backgroundColor;
+}
 
+function handleDragOver(event) {
+    event.preventDefault();
+}
+
+function handleDrop(event) {
+    const targetCell = event.target;
+    const dropColor = targetCell.style.backgroundColor;
+    targetCell.style.backgroundColor = draggedColor;
+    draggedCell.style.backgroundColor = dropColor;
+
+    checkIfSolved();
+}
+
+function handleTouchStart(event) {
+    draggedCell = event.target;
+    draggedColor = draggedCell.style.backgroundColor;
+
+    const touch = event.touches[0];
+    const rect = draggedCell.getBoundingClientRect();
+    touchOffsetX = touch.clientX - rect.left;
+    touchOffsetY = touch.clientY - rect.top;
+    longPressTimeout = setTimeout(() => {
+
+        cloneElement = draggedCell.cloneNode(true);
+        cloneElement.classList.add('dragging');
+        cloneElement.style.position = 'absolute';
+        cloneElement.style.pointerEvents = 'none';
+        cloneElement.style.zIndex = '1000';
+        document.body.appendChild(cloneElement);
+        draggedCell.classList.add('picked-up');
+        draggedCell.style.backgroundColor = 'transparent';
+        cloneElement.style.left = `${touch.clientX - touchOffsetX}px`;
+        cloneElement.style.top = `${touch.clientY - touchOffsetY}px`;
+    }, 500);
+}
+
+function handleTouchMove(event) {
+    event.preventDefault();
+    if (!cloneElement) return;
+
+    const touch = event.touches[0];
+    cloneElement.style.left = `${touch.clientX - touchOffsetX}px`;
+    cloneElement.style.top = `${touch.clientY - touchOffsetY}px`;
+}
+function handleTouchEnd(event) {
+    clearTimeout(longPressTimeout);
+
+    if (cloneElement) {
+        const touch = event.changedTouches[0];
+        const targetCell = document.elementFromPoint(touch.clientX, touch.clientY);
+
+        if (targetCell && targetCell.classList.contains('movable')) {
+            const startRow = parseInt(draggedCell.dataset.row);
+            const startCol = parseInt(draggedCell.dataset.col);
+            const endRow = parseInt(targetCell.dataset.row);
+            const endCol = parseInt(targetCell.dataset.col);
+            const tempColor = currentGrid[startRow][startCol];
+            currentGrid[startRow][startCol] = currentGrid[endRow][endCol];
+            currentGrid[endRow][endCol] = tempColor;
+
+            renderGrid();
+            checkIfSolved();
+            targetCell.classList.add('dropped');
+            setTimeout(() => targetCell.classList.remove('dropped'), 150);
+        } else {
+            draggedCell.style.backgroundColor = draggedColor;
+        }
+        draggedCell.classList.remove('picked-up');
+        document.body.removeChild(cloneElement);
+        cloneElement = null;
+    }
+}
 function startNewBatch() {
-    const newGrid = setColors();
-    renderGrid(newGrid);
+    setColors();
+    renderGrid();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
