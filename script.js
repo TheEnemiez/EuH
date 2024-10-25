@@ -5,6 +5,9 @@ let draggedCell = null;
 let draggedColor = null;
 let longPressTimeout = null;
 let cloneElement = null;
+let level = localStorage.getItem('gameLevel') ? parseInt(localStorage.getItem('gameLevel'), 10) : 1;
+document.getElementById('level-count').textContent = level;
+
 function hexToRgb(hex) {
     const bigint = parseInt(hex.slice(1), 16);
     const r = (bigint >> 16) & 255;
@@ -37,8 +40,8 @@ function interpolateColors(startRGB, endRGB, steps) {
 }
 
 function getRandomGridDimensions() {
-    const width = Math.floor(Math.random() * 9) + 4;
-    const height = Math.floor(Math.random() * 9) + 4;
+    const width = Math.floor(Math.random() * 9) + 4 ? 4 : 4
+    const height = Math.floor(Math.random() * 9) + 4 ? 4 : 4
     console.log(`width: ${width}, height: ${height}`)
     return { width, height };
 }
@@ -212,6 +215,26 @@ function animateSwap(element, offsetX, offsetY) {
         }, { once: true });
     });
 }
+
+function showLevelPopup() {
+    const levelPopup = document.getElementById('level-popup');
+    const levelNumber = document.getElementById('level-number');
+    levelNumber.textContent = level;
+    document.getElementById('level-count').textContent = level;
+    levelPopup.classList.add('active');
+}
+function hideLevelPopup() {
+    const levelPopup = document.getElementById('level-popup');
+    levelPopup.classList.remove('active');
+}
+document.getElementById('next-level-button').addEventListener('click', () => {
+    hideLevelPopup();
+    level++;
+    document.getElementById('level-count').textContent = level;
+    localStorage.setItem('gameLevel', level);
+    startNewBatch();
+});
+
 function checkIfSolved() {
     console.log("Checking if puzzle is solved.");
     let solved = true;
@@ -229,8 +252,17 @@ function checkIfSolved() {
     }
     if (solved) {
         console.log("Puzzle solved!");
-        alert('Good job!');
-        setTimeout(startNewBatch, 1000);
+        const overlay = document.getElementById('gradient-overlay');
+        const overlayVideo = document.getElementById('overlay-video');
+
+        overlay.style.background = `linear-gradient(to bottom right, ${correctGrid[0][0]}, ${correctGrid[0][gridWidth - 1]}, ${correctGrid[gridHeight - 1][0]}, ${correctGrid[gridHeight - 1][gridWidth - 1]})`;
+        overlay.style.opacity = 1;
+        overlayVideo.style.opacity = 1;
+        setTimeout(() => {
+            overlay.style.opacity = 0;
+            overlayVideo.style.opacity = 0;
+        }, 1000);
+        setTimeout(showLevelPopup, 1500);
     } else {
         console.log("Puzzle not yet solved.");
     }
