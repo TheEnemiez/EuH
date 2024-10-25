@@ -40,8 +40,8 @@ function interpolateColors(startRGB, endRGB, steps) {
 }
 
 function getRandomGridDimensions() {
-    const width = Math.floor(Math.random() * 9) + 4 ? 4 : 4
-    const height = Math.floor(Math.random() * 9) + 4 ? 4 : 4
+    const width = Math.floor(Math.random() * 9) + 4
+    const height = Math.floor(Math.random() * 9) + 4
     console.log(`width: ${width}, height: ${height}`)
     return { width, height };
 }
